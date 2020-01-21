@@ -1,4 +1,5 @@
 #define SUBBUFFER_HEADER_SIZE 84
+#define MAX_HOSTNAME 64
 #define TRACE_PATH "/var/log/dn/traces/"
 
 #include <stdio.h>
@@ -12,6 +13,7 @@
 
 
 static struct lttng_ht *name_to_fd_ht;
+static char *traces_path;
 
 struct file_to_fd_node {
 	struct lttng_ht_node_str node;
@@ -22,11 +24,29 @@ struct file_to_fd_node {
 
 int init_dn_write()
 {
+	int ret;
+	char hostname[MAX_HOSTNAME];
 	name_to_fd_ht = lttng_ht_new(16, LTTNG_HT_TYPE_STRING);
 	if (!name_to_fd_ht) {
+		ERR("Failed to create hash table for filename");
 		return -1;
 	}
 
+	traces_path = malloc(LTTNG_PATH_MAX);
+	if (!traces_path) {
+		ERR("Failed to malloc array for traces path");
+		return -1;
+	}
+
+	gethostname(hostname, MAX_HOSTNAME);
+	ret = snprintf(traces_path, LTTNG_PATH_MAX, "%s%s/",
+			TRACE_PATH, hostname);
+	if (ret == -1 || ret >= LTTNG_PATH_MAX) {
+		ERR("Failed to create path to logger");
+		return -1;
+	}
+
+	// TODO make this dir (recursive mkdir)
 	return 0;
 }
 
@@ -34,7 +54,7 @@ int init_dn_write()
 static int create_full_path(const char *filename, char *fullpath, size_t size)
 {
 	int ret = snprintf(fullpath, size, "%s%s",
-			TRACE_PATH, filename);
+			traces_path, filename);
 	if (ret == -1 || ret >= size)
 	{
 		ERR("Failed to format subdirectory from process name");
@@ -121,7 +141,6 @@ ssize_t dn_write_subbuffer(const void *buf, size_t count)
 	uint64_t write_size = *(uint64_t *)(buf + 48);
 	size_t i = SUBBUFFER_HEADER_SIZE;
 	char filename[LTTNG_PATH_MAX];
-	
 	// return if this a metadata stream magic == 0x75d11d57
 	if (*(uint32_t *)buf == 0x75d11d57) {
 		return count;
@@ -132,7 +151,7 @@ ssize_t dn_write_subbuffer(const void *buf, size_t count)
 	}
 
 	write_size >>= 3; // changing from bits to bytes
-	while (i < write_size) 
+	while (i < write_size)
 	{
 		int *msgsize;
 		if (*(uint16_t *)(buf + i) == UINT16_MAX) {
@@ -147,7 +166,7 @@ ssize_t dn_write_subbuffer(const void *buf, size_t count)
 			goto finish;
 		}
 
-		i += ret + 1; //eof does not count in ret	
+		i += ret + 1; //eof does not count in ret
 		fd = get_fd_from_filename(filename);
 		if (fd < 0)
 		{
@@ -166,7 +185,7 @@ ssize_t dn_write_subbuffer(const void *buf, size_t count)
 		i += ret;
 
 	}
-	ret = count;	
+	ret = count;
 
 finish:
 	return ret;
