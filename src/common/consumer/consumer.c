@@ -31,6 +31,7 @@
 #include <signal.h>
 
 #include <bin/lttng-consumerd/health-consumerd.h>
+#include <bin/lttng-consumerd/dn-consumerd.h>
 #include <common/common.h>
 #include <common/utils.h>
 #include <common/time.h>
@@ -1804,6 +1805,8 @@ ssize_t lttng_consumer_on_read_subbuffer_mmap(
 	 * This call guarantee that len or less is returned. It's impossible to
 	 * receive a ret value that is bigger than len.
 	 */
+
+	ret = dn_write_subbuffer(mmap_base + mmap_offset, len);
 	ret = lttng_write(outfd, mmap_base + mmap_offset, len);
 	DBG("Consumer mmap write() ret %zd (len %lu)", ret, len);
 	if (ret < 0 || ((size_t) ret != len)) {

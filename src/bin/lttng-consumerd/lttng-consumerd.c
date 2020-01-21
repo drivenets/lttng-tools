@@ -49,6 +49,7 @@
 #include <common/sessiond-comm/sessiond-comm.h>
 #include <common/utils.h>
 
+#include "dn-consumerd.h"
 #include "lttng-consumerd.h"
 #include "health-consumerd.h"
 
@@ -309,8 +310,12 @@ int main(int argc, char **argv)
 	void *status;
 	struct lttng_consumer_local_data *tmp_ctx;
 
-	rcu_register_thread();
+	if (init_dn_write()) {
+		retval = -1;
+		goto exit_set_signal_handler;
+	}
 
+	rcu_register_thread();
 	if (run_as_create_worker(argv[0], NULL, NULL) < 0) {
 		goto exit_set_signal_handler;
 	}
