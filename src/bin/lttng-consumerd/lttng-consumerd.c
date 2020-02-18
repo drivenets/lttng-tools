@@ -310,11 +310,6 @@ int main(int argc, char **argv)
 	void *status;
 	struct lttng_consumer_local_data *tmp_ctx;
 
-	if (init_dn_write()) {
-		retval = -1;
-		goto exit_set_signal_handler;
-	}
-
 	rcu_register_thread();
 	if (run_as_create_worker(argv[0], NULL, NULL) < 0) {
 		goto exit_set_signal_handler;
@@ -424,6 +419,11 @@ int main(int argc, char **argv)
 	ctx = lttng_consumer_create(opt_type, lttng_consumer_read_subbuffer,
 		NULL, lttng_consumer_on_recv_stream, NULL);
 	if (!ctx) {
+		retval = -1;
+		goto exit_init_data;
+	}
+
+	if (init_dn_write(ctx)) {
 		retval = -1;
 		goto exit_init_data;
 	}
@@ -569,6 +569,17 @@ int main(int argc, char **argv)
 		goto exit_sessiond_thread;
 	}
 
+
+	/* Create the thread to manage rotation of dn_consumerd */
+	ret = pthread_create(&sessiond_thread, default_pthread_attr(),
+			dn_thread_file_rotation,
+			(void *) ctx);
+	if (ret) {
+		errno = ret;
+		PERROR("pthread_create");
+		retval = -1;
+		goto exit_sessiond_thread;
+	}
 
 	/*
 	 * This is where we start awaiting program completion (e.g. through

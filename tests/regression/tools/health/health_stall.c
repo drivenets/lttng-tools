@@ -265,3 +265,14 @@ int __testpoint_relayd_thread_live_listener(void)
 
 	return 0;
 }
+
+int __testpoint_consumerd_thread_dn_rotate(void)
+{
+	const char *var = "LTTNGONSUMERD_THREAD_DN_ROTATE_STALL";
+
+	if (check_env_var(var)) {
+		do_stall();
+	}
+
+	return 0;
+}

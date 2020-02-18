@@ -28,5 +28,6 @@ TESTPOINT_DECL(consumerd_thread_data);
 TESTPOINT_DECL(consumerd_thread_data_poll);
 TESTPOINT_DECL(consumerd_thread_sessiond);
 TESTPOINT_DECL(consumerd_thread_metadata_timer);
+TESTPOINT_DECL(consumerd_thread_dn_rotate);
 
 #endif /* CONSUMERD_TESTPOINT_H */

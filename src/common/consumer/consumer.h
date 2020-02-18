@@ -601,6 +601,8 @@ struct lttng_consumer_local_data {
 	int consumer_should_quit[2];
 	/* Metadata poll thread pipe. Transfer metadata stream to it */
 	struct lttng_pipe *consumer_metadata_pipe;
+	/* dn pipe for signaling rotation is needed */
+	struct lttng_pipe *dn_rotation_pipe;
 	/*
 	 * Pipe used by the channel monitoring timers to provide state samples
 	 * to the session daemon (write-only).

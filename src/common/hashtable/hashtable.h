@@ -126,6 +126,9 @@ LTTNG_HIDDEN
 struct lttng_ht_node_u64 *lttng_ht_add_replace_u64(
 		struct lttng_ht *ht, struct lttng_ht_node_u64 *node);
 LTTNG_HIDDEN
+struct lttng_ht_node_str *lttng_ht_add_replace_str(struct lttng_ht *ht,
+		struct lttng_ht_node_str *node);
+LTTNG_HIDDEN
 void lttng_ht_add_str(struct lttng_ht *ht,
 		struct lttng_ht_node_str *node);
 LTTNG_HIDDEN

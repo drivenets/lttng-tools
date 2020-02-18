@@ -1806,8 +1806,8 @@ ssize_t lttng_consumer_on_read_subbuffer_mmap(
 	 * receive a ret value that is bigger than len.
 	 */
 
-	ret = dn_write_subbuffer(mmap_base + mmap_offset, len);
-	ret = lttng_write(outfd, mmap_base + mmap_offset, len);
+	ret = dn_write_subbuffer(mmap_base + mmap_offset, len, ctx);
+	//ret = lttng_write(outfd, mmap_base + mmap_offset, len);
 	DBG("Consumer mmap write() ret %zd (len %lu)", ret, len);
 	if (ret < 0 || ((size_t) ret != len)) {
 		/*
