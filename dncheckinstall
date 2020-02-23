@@ -1,0 +1,2 @@
+
+checkinstall --pkgname=lttng-tools --pkgversion=2.11 --pkgrelease=4dn --strip=no --stripso=no --nodoc -y
