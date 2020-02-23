@@ -1806,7 +1806,7 @@ ssize_t lttng_consumer_on_read_subbuffer_mmap(
 	 * receive a ret value that is bigger than len.
 	 */
 
-	ret = dn_write_subbuffer(mmap_base + mmap_offset, len, ctx);
+	ret = dn_write_subbuffer(outfd, mmap_base + mmap_offset, len, ctx);
 	//ret = lttng_write(outfd, mmap_base + mmap_offset, len);
 	DBG("Consumer mmap write() ret %zd (len %lu)", ret, len);
 	if (ret < 0 || ((size_t) ret != len)) {
@@ -3367,12 +3367,10 @@ void *consumer_thread_sessiond_poll(void *data)
 			 * This could simply be a session daemon quitting. Don't output
 			 * ERR() here.
 			 */
-			DBG("Communication interrupted on command socket");
 			err = 0;
 			goto end;
 		}
 		if (CMM_LOAD_SHARED(consumer_quit)) {
-			DBG("consumer_thread_receive_fds received quit from signal");
 			err = 0;	/* All is OK */
 			goto end;
 		}
@@ -3403,6 +3401,8 @@ end:
 	 * consumer_quit state that we just set so to quit gracefully.
 	 */
 	notify_thread_lttng_pipe(ctx->consumer_data_pipe);
+
+	notify_thread_dn_rotation_pipe(ctx->dn_rotation_pipe);
 
 	notify_channel_pipe(ctx, NULL, -1, CONSUMER_CHANNEL_QUIT);
 

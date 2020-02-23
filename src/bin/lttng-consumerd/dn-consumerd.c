@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#include <zlib.h>
 
 #include <bin/lttng-consumerd/health-consumerd.h>
 #include <bin/lttng-consumerd/dn-consumerd.h>
@@ -42,7 +43,7 @@ void createfilename(const char *filename, int index, char *buf, int size)
 	char fullpath[LTTNG_PATH_MAX];
 	create_full_path(filename, fullpath, LTTNG_PATH_MAX);
 	if (index > 0) {
-		snprintf(buf, size, "%s.%d", fullpath, index);
+		snprintf(buf, size, "%s.%d.gz", fullpath, index);
 	}
 	else {
 		strncpy(buf, fullpath, LTTNG_PATH_MAX);
@@ -120,6 +121,69 @@ static struct lttng_ht_node_str *create_new_node(const char *filename)
 }
 
 
+void compressfile(const char *zipedfilename)
+{
+	char fullpath[LTTNG_PATH_MAX];
+	char buf[BUFSIZ];
+	ssize_t bytes_read;
+	int filefd;
+	if( access(zipedfilename, F_OK ) != 0 ) {
+		ERR("Cannot zip file %s", zipedfilename);
+		goto finished_compression;
+	}
+
+	create_full_path("tmp", fullpath, LTTNG_PATH_MAX);
+	gzFile *fi = (gzFile *)gzopen(fullpath, "wb");
+	if (NULL == fi)
+	{
+		ERR("Could not open zip file %s", zipedfilename);
+		goto closegz;
+	}
+
+	filefd = open(zipedfilename, O_RDONLY);
+	if (filefd < 0) {
+		ERR("Failed to read from file %s, error %s",
+				zipedfilename, strerror(errno));
+		goto closegz;
+
+	}
+	bytes_read = read(filefd, buf, BUFSIZ);
+	if (bytes_read == -1) {
+		ERR("Could not start reading file %s, wont compress",
+				zipedfilename);
+		goto closeall;
+	}
+	while (bytes_read > 0) {
+		int bytes_written = gzwrite(fi, buf, bytes_read);
+		if (bytes_written <= 0) {
+
+			ERR("Failed to write to zip file %s, %s",
+					zipedfilename, strerror(errno));
+			ERR("Should write: %ld:\n %s", bytes_read, buf);
+			goto closeall;
+		}
+		bytes_read = read(filefd, buf, BUFSIZ);
+		if (bytes_read == -1) {
+			ERR("Failed reading file %s, wont compress", zipedfilename);
+			goto closeall;
+		}
+	}
+
+	rename(fullpath, zipedfilename);
+
+closeall:
+	close(filefd);
+
+closegz:
+        gzclose(fi);
+	remove(fullpath);
+
+finished_compression:
+	return;
+
+}
+
+
 void rotate(const char *filename)
 {
 	int index;
@@ -157,7 +221,9 @@ void rotate(const char *filename)
 	}
 
 	synchronize_rcu();
+	close(node->fd);
 	free(node);
+	compressfile(newname);
 	return;
 
 derotate:
@@ -169,6 +235,13 @@ derotate:
 			rename(oldname, newname);
 		}
 	}
+}
+
+
+void notify_thread_dn_rotation_pipe(struct lttng_pipe *pipe)
+{
+	MSG("Closing dn rotation thread");
+	lttng_pipe_write_close(pipe);
 }
 
 
@@ -188,21 +261,22 @@ void *dn_thread_file_rotation(void *data)
 
 	health_code_update();
 
+	health_code_update();
+	ret = lttng_poll_create(&events, 2, LTTNG_CLOEXEC);
+	if (ret < 0) {
+		ERR("Could not create poll for dn rotation");
+		goto dn_rotation_err;
+	}
+
+	ret = lttng_poll_add(&events, pipe->fd[0],
+			LPOLLIN | LPOLLERR | LPOLLRDHUP);
+	if (ret < 0) {
+		ERR("Could not add dnrotation pipe to poll");
+		goto dn_rotation_err;
+	}
+
 	while (1) {
 		health_code_update();
-		ret = lttng_poll_create(&events, 2, LTTNG_CLOEXEC); 
-		if (ret < 0) {
-			ERR("Could not create poll for dn rotation");
-			goto dn_rotation_err;
-		}
-
-		ret = lttng_poll_add(&events, pipe->fd[0], LPOLLIN);
-		if (ret < 0) {
-			ERR("Could not add dnrotation pipe to poll");
-			goto dn_rotation_err;
-		}
-
-restart:
 		health_poll_entry();
 		ret = lttng_poll_wait(&events, -1);
 		DBG("DN rotation poll return from wait with %d fd(s)",
@@ -210,10 +284,7 @@ restart:
 		health_poll_exit();
 
 		if (ret < 0) {
-			if (errno == EINTR) {
-				ERR("Poll EINTR caught");
-				goto restart;
-			}
+			ERR("Rotation poll returned with error");
 			goto dn_rotation_err;
 		}
 
@@ -236,6 +307,9 @@ restart:
 					DBG("Rotating %s", filename);
 					rotate(filename);
 				}
+				else {
+					goto dn_rotation_finished;
+				}
 			}
 		}
 	}
@@ -243,6 +317,9 @@ restart:
 	// this code should never run
 dn_rotation_err:
 	health_error();
+
+dn_rotation_finished:
+	MSG("Rotation thread closing");
 	health_unregister(health_consumerd);
 	rcu_unregister_thread();
 	return NULL;
@@ -272,7 +349,7 @@ int init_dn_write(struct lttng_consumer_local_data *ctx)
 		ERR("Failed to create path to logger");
 		return -1;
 	}
-	
+
 	ctx->dn_rotation_pipe = lttng_pipe_open(FD_CLOEXEC);
 	if (!ctx->dn_rotation_pipe) {
 		return -1;
@@ -303,6 +380,7 @@ static struct file_to_fd_node *get_fd_from_filename(char *filename)
 }
 
 ssize_t dn_write_subbuffer(
+		int outfd,
 		const void *buf, size_t count,
 		struct lttng_consumer_local_data *ctx)
 {
@@ -316,11 +394,11 @@ ssize_t dn_write_subbuffer(
 
 	// return if this a metadata stream magic == 0x75d11d57
 	if (*(uint32_t *)buf == 0x75d11d57) {
-		return count;
+		return lttng_write(outfd, buf, count);
 	}
 
 	if (count <= SUBBUFFER_HEADER_SIZE) {
-		return count;
+		return lttng_write(outfd, buf, count);
 	}
 
 	write_size >>= 3; // changing from bits to bytes

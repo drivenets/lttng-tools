@@ -16,6 +16,7 @@ lttng_consumerd_LDADD = \
 	   $(top_builddir)/src/common/testpoint/libtestpoint.la
 
 lttng_consumerd_LDFLAGS = -rdynamic
+lttng_consumerd_LDADD += -lz
 
 if HAVE_LIBLTTNG_UST_CTL
 lttng_consumerd_LDADD += -llttng-ust-ctl
